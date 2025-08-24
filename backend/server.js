@@ -159,7 +159,7 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
       .from('cars')
       .insert({
         plate: plate || null,
-        vin: vin || null,
+        vin: vin?.trim().toUpperCase() || null,
         hp: hp ? parseInt(hp) : null,
         mileage: mileage ? parseInt(mileage) : null,
         year: year ? parseInt(year) : null,
