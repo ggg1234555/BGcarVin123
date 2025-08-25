@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Добави автомобил - Автомобилна информация</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚗 Автомобилна информация</h1>
+            <p class="subtitle">Добавяне на нов автомобил</p>
+        </header>
+
+        <nav class="nav-menu">
+            <a href="index.html">Търсене</a>
+            <a href="submit.html" class="active">Добави автомобил</a>
+        </nav>
+
+        <main>
+            <div class="submit-section">
+                <form id="submitForm" class="submit-form">
+                    <div class="form-group">
+                        <label for="plate">Регистрационен номер:</label>
+                        <input 
+                            type="text" 
+                            id="plate" 
+                            name="plate"
+                            placeholder="напр. СА1234АВ"
+                            maxlength="10"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="vin">VIN номер:</label>
+                        <input 
+                            type="text" 
+                            id="vin" 
+                            name="vin"
+                            placeholder="17 символа"
+                            maxlength="17"
+                        >
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="make">Марка: <span class="required">*</span></label>
+                            <input 
+                                type="text" 
+                                id="make" 
+                                name="make"
+                                placeholder="напр. Toyota"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="model">Модел: <span class="required">*</span></label>
+                            <input 
+                                type="text" 
+                                id="model" 
+                                name="model"
+                                placeholder="напр. Corolla"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="year">Година:</label>
+                            <input 
+                                type="number" 
+                                id="year" 
+                                name="year"
+                                placeholder="напр. 2020"
+                                min="1900"
+                                max="2025"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="hp">Мощност (к.с.):</label>
+                            <input 
+                                type="number" 
+                                id="hp" 
+                                name="hp"
+                                placeholder="напр. 150"
+                                min="1"
+                                max="2000"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="mileage">Пробег (км):</label>
+                            <input 
+                                type="number" 
+                                id="mileage" 
+                                name="mileage"
+                                placeholder="напр. 50000"
+                                min="0"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">Бележки:</label>
+                        <textarea 
+                            id="notes" 
+                            name="notes"
+                            rows="4"
+                            placeholder="Допълнителна информация за автомобила..."
+                        ></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="photos">Снимки (до 5 броя):</label>
+                        <input 
+                            type="file" 
+                            id="photos" 
+                            name="photos"
+                            accept="image/*"
+                            multiple
+                            class="file-input"
+                        >
+                        <div id="photoPreview" class="photo-preview"></div>
+                    </div>
+
+                    <div class="form-group consent-group">
+                        <label class="checkbox-label">
+                            <input 
+                                type="checkbox" 
+                                id="consent" 
+                                name="consent"
+                                required
+                            >
+                            <span>Съгласен/на съм да публикувате тези данни без лична информация. <span class="required">*</span></span>
+                        </label>
+                    </div>
+
+                    <div id="submitError" class="error-message hidden"></div>
+                    <div id="submitSuccess" class="success-message hidden"></div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="submitBtn" class="submit-btn">
+                            <span id="submitBtnText">Добави автомобил</span>
+                            <span id="submitBtnLoading" class="hidden">Изпращане...</span>
+                        </button>
+                        <button type="button" onclick="resetForm()" class="reset-btn">Изчисти</button>
+                    </div>
+                </form>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 Автомобилна информация България</p>
+        </footer>
+    </div>
+
+    <script>
+        // Configuration - Update this with your backend URL
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : 'https://your-backend-url.railway.app'; // Update with your Railway URL
+
+        let selectedPhotos = [];
+
+        document.getElementById('submitForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const plate = document.getElementById('plate').value.trim();
+            const vin = document.getElementById('vin').value.trim();
+            
+            // Validate that at least one identifier is provided
+            if (!plate && !vin) {
+                showError('Моля, въведете регистрационен номер или VIN');
+                return;
+            }
+
+            // Validate VIN length if provided
+            if (vin && vin.length !== 17) {
+                showError('VIN номерът трябва да бъде точно 17 символа');
+                return;
+            }
+
+            // Hide previous messages
+            hideElement('submitError');
+            hideElement('submitSuccess');
+            
+            // Show loading state
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtnText').classList.add('hidden');
+            document.getElementById('submitBtnLoading').classList.remove('hidden');
+
+            try {
+                const formData = new FormData();
+                formData.append('plate', plate.toUpperCase());
+                formData.append('vin', vin.toUpperCase());
+                formData.append('make', document.getElementById('make').value);
+                formData.append('model', document.getElementById('model').value);
+                formData.append('year', document.getElementById('year').value);
+                formData.append('hp', document.getElementById('hp').value);
+                formData.append('mileage', document.getElementById('mileage').value);
+                formData.append('notes', document.getElementById('notes').value);
+                formData.append('consent', document.getElementById('consent').checked);
+
+                // Add photos
+                if (selectedPhotos.length > 0) {
+                    for (let i = 0; i < Math.min(selectedPhotos.length, 5); i++) {
+                        formData.append('photos', selectedPhotos[i]);
+                    }
+                }
+
+                const response = await fetch(`${API_URL}/api/submit`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Грешка при добавянето');
+                }
+
+                showSuccess('Автомобилът е добавен успешно!');
+                document.getElementById('submitForm').reset();
+                selectedPhotos = [];
+                clearPhotoPreview();
+                
+            } catch (error) {
+                showError(error.message || 'Грешка при връзка със сървъра');
+            } finally {
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('submitBtnText').classList.remove('hidden');
+                document.getElementById('submitBtnLoading').classList.add('hidden');
+            }
+        });
+
+        document.getElementById('photos').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            
+            if (files.length > 5) {
+                showError('Можете да качите максимум 5 снимки');
+                e.target.value = '';
+                return;
+            }
+
+            selectedPhotos = files;
+            displayPhotoPreview(files);
+        });
+
+        function displayPhotoPreview(files) {
+            const preview = document.getElementById('photoPreview');
+            preview.innerHTML = '';
+
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const div = document.createElement('div');
+                    div.className = 'preview-item';
+                    div.innerHTML = `
+                        <img src="${e.target.result}" alt="Preview ${index + 1}">
+                        <span class="preview-name">${file.name}</span>
+                    `;
+                    preview.appendChild(div);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function clearPhotoPreview() {
+            document.getElementById('photoPreview').innerHTML = '';
+            document.getElementById('photos').value = '';
+        }
+
+        function resetForm() {
+            document.getElementById('submitForm').reset();
+            selectedPhotos = [];
+            clearPhotoPreview();
+            hideElement('submitError');
+            hideElement('submitSuccess');
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('submitError');
+            errorElement.textContent = message;
+            showElement('submitError');
+            hideElement('submitSuccess');
+        }
+
+        function showSuccess(message) {
+            const successElement = document.getElementById('submitSuccess');
+            successElement.textContent = message;
+            showElement('submitSuccess');
+            hideElement('submitError');
+        }
+
+        function showElement(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function hideElement(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
