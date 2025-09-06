@@ -8,14 +8,25 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Supabase client
+// Supabase client with your credentials
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_URL || 'https://uqyihdratmmprqavxmrl.supabase.co',
+  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxeWloZHJhdG1tcHJxYXZ4bXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQyMzQyOTQsImV4cCI6MjA2OTgxMDI5NH0.H1MmPWGrZGnjEYPbYECs1l-okx3jvQZWd81HYaLhLgI'
 );
 
-// Middleware
-app.use(cors());
+// Middleware - Configure CORS for your GitHub Pages site
+app.use(cors({
+  origin: [
+    'https://ggg1234555.github.io',
+    'http://localhost:8080',
+    'http://localhost:8000',
+    'http://localhost:3000',
+    'http://127.0.0.1:8080'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Multer for file uploads
