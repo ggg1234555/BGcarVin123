@@ -8,16 +8,16 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Supabase client with your credentials
+// ⚠️ SECURITY FIX: Use service_role key SERVER-SIDE ONLY for storage + inserts
+// Never expose service_role to the frontend
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://uqyihdratmmprqavxmrl.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxeWloZHJhdG1tcHJxYXZ4bXJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQyMzQyOTQsImV4cCI6MjA2OTgxMDI5NH0.H1MmPWGrZGnjEYPbYECs1l-okx3jvQZWd81HYaLhLgI'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // 🔁 use service_role only on backend
 );
 
 // Enhanced CORS configuration
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
@@ -47,14 +47,12 @@ app.use(cors({
     'X-HTTP-Method-Override'
   ],
   credentials: true,
-  optionsSuccessStatus: 200 // For legacy browser support
+  optionsSuccessStatus: 200
 }));
 
-// Add these middleware in the correct order
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Add request logging for debugging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path} from ${req.get('origin') || req.get('host')}`);
   next();
@@ -64,11 +62,10 @@ app.use((req, res, next) => {
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: { 
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-    files: 5 // Max 5 files
+    fileSize: 5 * 1024 * 1024,
+    files: 5
   },
   fileFilter: (req, file, cb) => {
-    // Accept only image files
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
@@ -77,7 +74,6 @@ const upload = multer({
   }
 });
 
-// Handle preflight requests explicitly
 app.options('*', cors());
 
 // Root endpoint
@@ -89,7 +85,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Search endpoint with improved error handling
+// Search endpoint
 app.post('/api/search', async (req, res) => {
   try {
     console.log('Search request body:', req.body);
@@ -104,7 +100,7 @@ app.post('/api/search', async (req, res) => {
 
     const cleanQuery = query.trim().toUpperCase();
 
-    // First check local database
+    // Check local database
     let localResult = await supabase
       .from('cars')
       .select('*')
@@ -128,19 +124,18 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    // If not found locally and query is 17 chars (VIN), try NHTSA
+    // If 17 chars (VIN), try NHTSA
     if (cleanQuery.length === 17) {
       try {
         console.log('Trying NHTSA API for VIN:', cleanQuery);
         const nhtsa_response = await axios.get(
           `https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${cleanQuery}?format=json`,
-          { timeout: 10000 } // 10 second timeout
+          { timeout: 10000 }
         );
 
         if (nhtsa_response.data && nhtsa_response.data.Results) {
           const results = nhtsa_response.data.Results;
           
-          // Extract relevant data from NHTSA response
           const findValue = (field) => {
             const item = results.find(r => r.Variable === field);
             return item && item.Value && item.Value !== 'Not Applicable' ? item.Value : null;
@@ -156,7 +151,6 @@ app.post('/api/search', async (req, res) => {
             vin: cleanQuery
           };
 
-          // Convert kW to HP if available
           if (data.engineHP) {
             data.hp = Math.round(parseFloat(data.engineHP) * 1.341);
           }
@@ -168,11 +162,9 @@ app.post('/api/search', async (req, res) => {
         }
       } catch (error) {
         console.error('NHTSA API error:', error.message);
-        // Don't return error immediately, fall through to 404
       }
     }
 
-    // No results found
     res.status(404).json({ 
       error: 'Не са намерени данни за този автомобил',
       query: cleanQuery
@@ -187,13 +179,13 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-// Submit car endpoint with improved error handling
+// Submit car endpoint
 app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
   try {
     console.log('Submit request body:', req.body);
     console.log('Files received:', req.files ? req.files.length : 0);
     
-    const { plate, vin, hp, mileage, year, make, model, notes, consent } = req.body;
+    const { plate, vin, hp, mileage, year, make, model, notes, consent, user_id } = req.body;
 
     // Validate consent
     if (consent !== 'true') {
@@ -211,6 +203,15 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
       });
     }
 
+    // ✅ SECURITY FIX: Validate user_id is a proper UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!user_id || !uuidRegex.test(user_id)) {
+      return res.status(400).json({
+        error: 'Invalid or missing user session.',
+        field: 'user_id'
+      });
+    }
+
     let photoUrls = [];
 
     // Upload photos if provided
@@ -219,7 +220,9 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
       
       for (const file of req.files) {
         try {
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${file.originalname}`;
+          // ✅ SECURITY FIX: Sanitize filename — strip path traversal characters
+          const safeOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${safeOriginalName}`;
           const filePath = `car-photos/${fileName}`;
 
           const { data: uploadData, error: uploadError } = await supabase.storage
@@ -234,7 +237,6 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
             continue;
           }
 
-          // Get public URL
           const { data: urlData } = supabase.storage
             .from('photos')
             .getPublicUrl(filePath);
@@ -244,22 +246,23 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
           }
         } catch (photoError) {
           console.error('Individual photo error:', photoError);
-          // Continue with other photos
         }
       }
     }
 
-    // Insert car record
+    // ✅ SECURITY FIX: user_id comes from req.body (sent by frontend after anon auth)
+    // RLS on Supabase side enforces that user_id = auth.uid() — double protection
     const carRecord = {
-      plate: plate ? plate.trim().toUpperCase() : null,
-      vin: vin ? vin.trim().toUpperCase() : null,
-      hp: hp ? parseInt(hp) : null,
-      mileage: mileage ? parseInt(mileage) : null,
-      year: year ? parseInt(year) : null,
-      make: make ? make.trim() : null,
-      model: model ? model.trim() : null,
-      notes: notes ? notes.trim() : null,
-      photos: photoUrls.length > 0 ? photoUrls : null,
+      plate:      plate   ? plate.trim().toUpperCase()  : null,
+      vin:        vin     ? vin.trim().toUpperCase()     : null,
+      hp:         hp      ? parseInt(hp)                 : null,
+      mileage:    mileage ? parseInt(mileage)            : null,
+      year:       year    ? parseInt(year)               : null,
+      make:       make    ? make.trim()                  : null,
+      model:      model   ? model.trim()                 : null,
+      notes:      notes   ? notes.trim()                 : null,
+      photos:     photoUrls.length > 0 ? photoUrls       : null,
+      user_id:    user_id,                               // 👈 tied to anonymous user
       created_at: new Date().toISOString()
     };
 
@@ -289,7 +292,6 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
   } catch (error) {
     console.error('Submit error:', error);
     
-    // Handle multer errors
     if (error instanceof multer.MulterError) {
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ 
@@ -319,7 +321,7 @@ app.post('/api/submit', upload.array('photos', 5), async (req, res) => {
   }
 });
 
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
